@@ -3,6 +3,13 @@ using UnityEngine;
 
 namespace MeshEditTools
 {
+    [Flags]
+    public enum MeshElementFlags : byte
+    {
+        None = 0,
+        Selected = 1 << 0
+    }
+
     [Serializable] public struct VertId { public int Value; public bool IsValid => Value >= 0; public VertId(int v) => Value = v; }
     [Serializable] public struct EdgeId { public int Value; public bool IsValid => Value >= 0; public EdgeId(int v) => Value = v; }
     [Serializable] public struct FaceId { public int Value; public bool IsValid => Value >= 0; public FaceId(int v) => Value = v; }

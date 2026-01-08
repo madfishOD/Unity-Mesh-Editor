@@ -160,6 +160,131 @@ public class EditableMesh
         la.RadialNext = loopId;
         lb.RadialPrev = loopId;
     }
+
+    public Mesh BakeToUnityMesh()
+    {
+        var mesh = new Mesh();
+        var vertices = new System.Collections.Generic.List<Vector3>();
+        var uv0 = new System.Collections.Generic.List<Vector2>();
+        var vertexMap = new System.Collections.Generic.Dictionary<RenderVertexKey, int>();
+        var submeshTriangles = new System.Collections.Generic.Dictionary<int, System.Collections.Generic.List<int>>();
+
+        for (int f = 0; f < Faces.Capacity; f++)
+        {
+            if (!Faces.IsAlive(f)) continue;
+            var face = Faces[f];
+            if (face.AnyLoop < 0 || face.LoopCount < 3) continue;
+
+            int materialIndex = face.MaterialIndex;
+            if (!submeshTriangles.TryGetValue(materialIndex, out var triangles))
+            {
+                triangles = new System.Collections.Generic.List<int>();
+                submeshTriangles.Add(materialIndex, triangles);
+            }
+
+            var loopIds = new int[face.LoopCount];
+            int loopId = face.AnyLoop;
+            for (int i = 0; i < face.LoopCount; i++)
+            {
+                loopIds[i] = loopId;
+                loopId = Loops[loopId].Next;
+                if (loopId < 0) break;
+            }
+
+            int loopCount = loopIds.Length;
+            if (loopCount == 3)
+            {
+                AddTriangle(loopIds[0], loopIds[1], loopIds[2], materialIndex, triangles, vertexMap, vertices, uv0);
+            }
+            else if (loopCount == 4)
+            {
+                AddTriangle(loopIds[0], loopIds[1], loopIds[2], materialIndex, triangles, vertexMap, vertices, uv0);
+                AddTriangle(loopIds[0], loopIds[2], loopIds[3], materialIndex, triangles, vertexMap, vertices, uv0);
+            }
+        }
+
+        mesh.SetVertices(vertices);
+        mesh.SetUVs(0, uv0);
+
+        if (submeshTriangles.Count > 0)
+        {
+            var materialKeys = new System.Collections.Generic.List<int>(submeshTriangles.Keys);
+            materialKeys.Sort();
+            mesh.subMeshCount = materialKeys.Count;
+            for (int i = 0; i < materialKeys.Count; i++)
+            {
+                mesh.SetTriangles(submeshTriangles[materialKeys[i]], i);
+            }
+        }
+
+        mesh.RecalculateNormals();
+        mesh.RecalculateBounds();
+        return mesh;
+    }
+
+    private void AddTriangle(
+        int loopA,
+        int loopB,
+        int loopC,
+        int materialIndex,
+        System.Collections.Generic.List<int> triangles,
+        System.Collections.Generic.Dictionary<RenderVertexKey, int> vertexMap,
+        System.Collections.Generic.List<Vector3> vertices,
+        System.Collections.Generic.List<Vector2> uv0)
+    {
+        triangles.Add(GetRenderVertexIndex(loopA, materialIndex, vertexMap, vertices, uv0));
+        triangles.Add(GetRenderVertexIndex(loopB, materialIndex, vertexMap, vertices, uv0));
+        triangles.Add(GetRenderVertexIndex(loopC, materialIndex, vertexMap, vertices, uv0));
+    }
+
+    private int GetRenderVertexIndex(
+        int loopId,
+        int materialIndex,
+        System.Collections.Generic.Dictionary<RenderVertexKey, int> vertexMap,
+        System.Collections.Generic.List<Vector3> vertices,
+        System.Collections.Generic.List<Vector2> uv0)
+    {
+        var loop = Loops[loopId];
+        var key = new RenderVertexKey(loop.Vert.Value, loop.UV0, materialIndex);
+        if (vertexMap.TryGetValue(key, out int existing))
+            return existing;
+
+        var position = Verts[loop.Vert.Value].Position;
+        int index = vertices.Count;
+        vertices.Add(position);
+        uv0.Add(loop.UV0);
+        vertexMap.Add(key, index);
+        return index;
+    }
+
+    private readonly struct RenderVertexKey : IEquatable<RenderVertexKey>
+    {
+        public RenderVertexKey(int vertId, Vector2 uv0, int materialIndex)
+        {
+            VertId = vertId;
+            Uv0 = uv0;
+            MaterialIndex = materialIndex;
+        }
+
+        public int VertId { get; }
+        public Vector2 Uv0 { get; }
+        public int MaterialIndex { get; }
+
+        public bool Equals(RenderVertexKey other)
+        {
+            return VertId == other.VertId && Uv0.Equals(other.Uv0) && MaterialIndex == other.MaterialIndex;
+        }
+
+        public override bool Equals(object obj)
+        {
+            return obj is RenderVertexKey other && Equals(other);
+        }
+
+        public override int GetHashCode()
+        {
+            return HashCode.Combine(VertId, Uv0, MaterialIndex);
+        }
+    }
 }
 
 }
