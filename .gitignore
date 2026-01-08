@@ -34,6 +34,14 @@
 # Visual Studio cache directory
 .vs/
 
+# IDE specific files
+/.idea
+/.vs
+/.vsconfig
+
+#Macos lovely file
+.DS_Store
+
 # Gradle cache directory
 .gradle/
 
