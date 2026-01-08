@@ -132,6 +132,84 @@ public class EditableMesh
         return new FaceId(fId);
     }
 
+    public FaceId AddFace(System.Collections.Generic.IReadOnlyList<VertId> faceVerts, System.Collections.Generic.IReadOnlyList<Vector2> uv0, int materialIndex = 0)
+    {
+        var faceId = AddFace(faceVerts, materialIndex);
+        if (uv0 != null)
+        {
+            SetFaceUVs(faceId, uv0);
+        }
+        return faceId;
+    }
+
+    public void SetFaceUVs(FaceId faceId, System.Collections.Generic.IReadOnlyList<Vector2> uv0)
+    {
+        if (!faceId.IsValid)
+            return;
+
+        ref var face = ref Faces[faceId.Value];
+        if (face.AnyLoop < 0 || face.LoopCount <= 0)
+            return;
+
+        int loopId = face.AnyLoop;
+        int max = Mathf.Min(face.LoopCount, uv0.Count);
+        for (int i = 0; i < max; i++)
+        {
+            ref var loop = ref Loops[loopId];
+            loop.UV0 = uv0[i];
+            loopId = loop.Next;
+            if (loopId < 0)
+                break;
+        }
+    }
+
+    public static EditableMesh FromUnityMesh(Mesh source)
+    {
+        if (source == null)
+            return null;
+
+        var editable = new EditableMesh();
+        var vertices = source.vertices;
+        for (int i = 0; i < vertices.Length; i++)
+        {
+            editable.AddVert(vertices[i]);
+        }
+
+        var uv0 = source.uv;
+        bool hasUv0 = uv0 != null && uv0.Length == vertices.Length;
+
+        int submeshCount = source.subMeshCount;
+        for (int submesh = 0; submesh < submeshCount; submesh++)
+        {
+            var triangles = source.GetTriangles(submesh);
+            for (int i = 0; i + 2 < triangles.Length; i += 3)
+            {
+                var faceVerts = new[]
+                {
+                    new VertId(triangles[i]),
+                    new VertId(triangles[i + 1]),
+                    new VertId(triangles[i + 2])
+                };
+
+                Vector2[] faceUv = null;
+                if (hasUv0)
+                {
+                    faceUv = new[]
+                    {
+                        uv0[triangles[i]],
+                        uv0[triangles[i + 1]],
+                        uv0[triangles[i + 2]]
+                    };
+                }
+
+                editable.AddFace(faceVerts, faceUv, submesh);
+            }
+        }
+
+        editable.RebuildCaches();
+        return editable;
+    }
+
     private void InsertLoopIntoEdgeRadial(int loopId)
     {
         ref var l = ref Loops[loopId];
