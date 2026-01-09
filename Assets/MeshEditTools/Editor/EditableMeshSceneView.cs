@@ -67,7 +67,7 @@ namespace MeshEditTools.Editor
             DrawFaces(data, mesh, selectionMode);
             DrawEdges(data, mesh, selectionMode);
             DrawVertices(data, mesh, selectionMode);
-            DrawMoveHandle(data, mesh, selectionMode);
+            DrawTransformHandle(data, mesh, selectionMode);
             Handles.matrix = Matrix4x4.identity;
         }
 
@@ -336,46 +336,20 @@ namespace MeshEditTools.Editor
         /// <summary>
         /// Draws a move handle for the current selection and applies position deltas.
         /// </summary>
-        private static void DrawMoveHandle(EditableMeshSessionData data, EditableMesh mesh, MeshSelectionMode selectionMode)
+        private static void DrawTransformHandle(EditableMeshSessionData data, EditableMesh mesh, MeshSelectionMode selectionMode)
         {
-            if (Tools.current != Tool.Move)
-                return;
-
-            var selectedVerts = CollectSelectedVertices(selectionMode, mesh);
-            if (selectedVerts.Count == 0)
-                return;
-
-            Vector3 centroid = Vector3.zero;
-            foreach (int vertId in selectedVerts)
+            switch (Tools.current)
             {
-                centroid += mesh.Verts[vertId].Position;
+                case Tool.Move:
+                    DrawMoveHandle(data, mesh, selectionMode);
+                    break;
+                case Tool.Rotate:
+                    DrawRotateHandle(data, mesh, selectionMode);
+                    break;
+                case Tool.Scale:
+                    DrawScaleHandle(data, mesh, selectionMode);
+                    break;
             }
-            centroid /= selectedVerts.Count;
-
-            var movedVerts = new HashSet<int>(selectedVerts);
-            foreach (int coincident in CollectCoincidentVertices(mesh, selectedVerts))
-            {
-                movedVerts.Add(coincident);
-            }
-
-            EditorGUI.BeginChangeCheck();
-            Vector3 newPosition = Handles.PositionHandle(centroid, Quaternion.identity);
-            if (!EditorGUI.EndChangeCheck())
-                return;
-
-            Vector3 delta = newPosition - centroid;
-            if (delta.sqrMagnitude <= Mathf.Epsilon)
-                return;
-
-            Undo.RecordObject(data, "Move Mesh Elements");
-            foreach (int vertId in movedVerts)
-            {
-                ref var vert = ref mesh.Verts[vertId];
-                vert.Position += delta;
-            }
-
-            EditorUtility.SetDirty(data);
-            SceneView.RepaintAll();
         }
 
         /// <summary>
@@ -461,6 +435,118 @@ namespace MeshEditTools.Editor
             }
 
             return coincident;
+        }
+
+        private static bool TryGetSelectionData(EditableMesh mesh, MeshSelectionMode selectionMode, out Vector3 centroid,
+            out HashSet<int> movedVerts)
+        {
+            var selectedVerts = CollectSelectedVertices(selectionMode, mesh);
+            if (selectedVerts.Count == 0)
+            {
+                centroid = Vector3.zero;
+                movedVerts = new HashSet<int>();
+                return false;
+            }
+
+            centroid = Vector3.zero;
+            foreach (int vertId in selectedVerts)
+            {
+                centroid += mesh.Verts[vertId].Position;
+            }
+            centroid /= selectedVerts.Count;
+
+            movedVerts = new HashSet<int>(selectedVerts);
+            foreach (int coincident in CollectCoincidentVertices(mesh, selectedVerts))
+            {
+                movedVerts.Add(coincident);
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Draws a move handle for the current selection and applies position deltas.
+        /// </summary>
+        private static void DrawMoveHandle(EditableMeshSessionData data, EditableMesh mesh, MeshSelectionMode selectionMode)
+        {
+            if (!TryGetSelectionData(mesh, selectionMode, out Vector3 centroid, out HashSet<int> movedVerts))
+                return;
+
+            EditorGUI.BeginChangeCheck();
+            Vector3 newPosition = Handles.PositionHandle(centroid, Quaternion.identity);
+            if (!EditorGUI.EndChangeCheck())
+                return;
+
+            Vector3 delta = newPosition - centroid;
+            if (delta.sqrMagnitude <= Mathf.Epsilon)
+                return;
+
+            Undo.RecordObject(data, "Move Mesh Elements");
+            foreach (int vertId in movedVerts)
+            {
+                ref var vert = ref mesh.Verts[vertId];
+                vert.Position += delta;
+            }
+
+            EditorUtility.SetDirty(data);
+            SceneView.RepaintAll();
+        }
+
+        /// <summary>
+        /// Draws a rotation handle for the current selection and applies rotation deltas.
+        /// </summary>
+        private static void DrawRotateHandle(EditableMeshSessionData data, EditableMesh mesh, MeshSelectionMode selectionMode)
+        {
+            if (!TryGetSelectionData(mesh, selectionMode, out Vector3 centroid, out HashSet<int> movedVerts))
+                return;
+
+            EditorGUI.BeginChangeCheck();
+            Quaternion newRotation = Handles.RotationHandle(Quaternion.identity, centroid);
+            if (!EditorGUI.EndChangeCheck())
+                return;
+
+            if (Quaternion.Angle(Quaternion.identity, newRotation) <= Mathf.Epsilon)
+                return;
+
+            Undo.RecordObject(data, "Rotate Mesh Elements");
+            foreach (int vertId in movedVerts)
+            {
+                ref var vert = ref mesh.Verts[vertId];
+                Vector3 offset = vert.Position - centroid;
+                vert.Position = centroid + newRotation * offset;
+            }
+
+            EditorUtility.SetDirty(data);
+            SceneView.RepaintAll();
+        }
+
+        /// <summary>
+        /// Draws a scale handle for the current selection and applies scale deltas.
+        /// </summary>
+        private static void DrawScaleHandle(EditableMeshSessionData data, EditableMesh mesh, MeshSelectionMode selectionMode)
+        {
+            if (!TryGetSelectionData(mesh, selectionMode, out Vector3 centroid, out HashSet<int> movedVerts))
+                return;
+
+            float handleSize = HandleUtility.GetHandleSize(centroid);
+            EditorGUI.BeginChangeCheck();
+            Vector3 newScale = Handles.ScaleHandle(Vector3.one, centroid, Quaternion.identity, handleSize);
+            if (!EditorGUI.EndChangeCheck())
+                return;
+
+            if ((newScale - Vector3.one).sqrMagnitude <= Mathf.Epsilon)
+                return;
+
+            Undo.RecordObject(data, "Scale Mesh Elements");
+            foreach (int vertId in movedVerts)
+            {
+                ref var vert = ref mesh.Verts[vertId];
+                Vector3 offset = vert.Position - centroid;
+                vert.Position = centroid + Vector3.Scale(offset, newScale);
+            }
+
+            EditorUtility.SetDirty(data);
+            SceneView.RepaintAll();
         }
 
         /// <summary>
