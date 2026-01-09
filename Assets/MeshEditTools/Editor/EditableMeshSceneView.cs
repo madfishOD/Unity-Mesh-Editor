@@ -27,6 +27,10 @@ namespace MeshEditTools.Editor
         private static bool isDragSelecting;
         private static Vector2 dragStart;
         private static Rect dragRect;
+        private static bool isRotating;
+        private static Quaternion lastRotation = Quaternion.identity;
+        private static bool isScaling;
+        private static Vector3 lastScale = Vector3.one;
 
         /// <summary>
         /// Registers the scene GUI callback when the editor loads.
@@ -338,6 +342,18 @@ namespace MeshEditTools.Editor
         /// </summary>
         private static void DrawTransformHandle(EditableMeshSessionData data, EditableMesh mesh, MeshSelectionMode selectionMode)
         {
+            if (Tools.current != Tool.Rotate && isRotating)
+            {
+                isRotating = false;
+                lastRotation = Quaternion.identity;
+            }
+
+            if (Tools.current != Tool.Scale && isScaling)
+            {
+                isScaling = false;
+                lastScale = Vector3.one;
+            }
+
             switch (Tools.current)
             {
                 case Tool.Move:
@@ -503,17 +519,34 @@ namespace MeshEditTools.Editor
             EditorGUI.BeginChangeCheck();
             Quaternion newRotation = Handles.RotationHandle(Quaternion.identity, centroid);
             if (!EditorGUI.EndChangeCheck())
+            {
+                if (isRotating && GUIUtility.hotControl == 0)
+                {
+                    isRotating = false;
+                    lastRotation = Quaternion.identity;
+                }
+
                 return;
+            }
 
             if (Quaternion.Angle(Quaternion.identity, newRotation) <= Mathf.Epsilon)
                 return;
+
+            if (!isRotating)
+            {
+                isRotating = true;
+                lastRotation = Quaternion.identity;
+            }
+
+            Quaternion deltaRotation = newRotation * Quaternion.Inverse(lastRotation);
+            lastRotation = newRotation;
 
             Undo.RecordObject(data, "Rotate Mesh Elements");
             foreach (int vertId in movedVerts)
             {
                 ref var vert = ref mesh.Verts[vertId];
                 Vector3 offset = vert.Position - centroid;
-                vert.Position = centroid + newRotation * offset;
+                vert.Position = centroid + deltaRotation * offset;
             }
 
             EditorUtility.SetDirty(data);
@@ -532,17 +565,37 @@ namespace MeshEditTools.Editor
             EditorGUI.BeginChangeCheck();
             Vector3 newScale = Handles.ScaleHandle(Vector3.one, centroid, Quaternion.identity, handleSize);
             if (!EditorGUI.EndChangeCheck())
+            {
+                if (isScaling && GUIUtility.hotControl == 0)
+                {
+                    isScaling = false;
+                    lastScale = Vector3.one;
+                }
+
                 return;
+            }
 
             if ((newScale - Vector3.one).sqrMagnitude <= Mathf.Epsilon)
                 return;
+
+            if (!isScaling)
+            {
+                isScaling = true;
+                lastScale = Vector3.one;
+            }
+
+            Vector3 deltaScale = new Vector3(
+                lastScale.x == 0f ? 1f : newScale.x / lastScale.x,
+                lastScale.y == 0f ? 1f : newScale.y / lastScale.y,
+                lastScale.z == 0f ? 1f : newScale.z / lastScale.z);
+            lastScale = newScale;
 
             Undo.RecordObject(data, "Scale Mesh Elements");
             foreach (int vertId in movedVerts)
             {
                 ref var vert = ref mesh.Verts[vertId];
                 Vector3 offset = vert.Position - centroid;
-                vert.Position = centroid + Vector3.Scale(offset, newScale);
+                vert.Position = centroid + Vector3.Scale(offset, deltaScale);
             }
 
             EditorUtility.SetDirty(data);
