@@ -177,7 +177,7 @@ namespace MeshEditTools.Editor
         /// </summary>
         private static void ApplySelection(EditableMeshComponent component, EditableMesh mesh, MeshSelectionMode mode, int id)
         {
-            bool toggle = Event.current.shift || Event.current.actionKey;
+            bool toggle = Event.current.shift;
             Undo.RecordObject(component, "Select Mesh Element");
 
             if (!toggle)
