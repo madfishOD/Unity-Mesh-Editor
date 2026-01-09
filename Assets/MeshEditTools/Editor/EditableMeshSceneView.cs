@@ -13,6 +13,9 @@ namespace MeshEditTools.Editor
         private const float VertexSizeScale = 0.04f;
         private const float EdgePickScale = 0.08f;
         private const float FacePickScale = 0.12f;
+        private const float VertexPickGuiRadius = 8f;
+        private const float EdgePickGuiRadius = 10f;
+        private const float FacePickGuiRadius = 12f;
         private static readonly Color EdgeColor = new(0.6f, 0.6f, 0.6f, 0.9f);
         private static readonly Color EdgeSelectedColor = new(1f, 0.8f, 0.2f, 1f);
         private static readonly Color VertexColor = new(0.2f, 0.9f, 1f, 0.9f);
@@ -54,6 +57,7 @@ namespace MeshEditTools.Editor
                 return;
 
             HandleDragSelection(data, filter.transform, EditableMeshSession.SelectionMode);
+            HandleClickSelection(data, filter.transform, EditableMeshSession.SelectionMode);
             DrawEditableMesh(data, filter.transform, EditableMeshSession.SelectionMode);
         }
 
@@ -73,6 +77,32 @@ namespace MeshEditTools.Editor
             DrawVertices(data, mesh, selectionMode);
             DrawTransformHandle(data, mesh, selectionMode);
             Handles.matrix = Matrix4x4.identity;
+        }
+
+        private static void HandleClickSelection(EditableMeshSessionData data, Transform targetTransform, MeshSelectionMode selectionMode)
+        {
+            if (data == null || data.EditableMesh == null || targetTransform == null)
+                return;
+
+            Event currentEvent = Event.current;
+            if (currentEvent.alt || Tools.current != Tool.None)
+                return;
+
+            if (currentEvent.type == EventType.Layout)
+            {
+                HandleUtility.AddDefaultControl(GUIUtility.GetControlID(FocusType.Passive));
+                return;
+            }
+
+            if (currentEvent.type != EventType.MouseDown || currentEvent.button != 0 || isDragSelecting)
+                return;
+
+            int pickedId = FindPickedElementId(data.EditableMesh, selectionMode, targetTransform, currentEvent.mousePosition);
+            if (pickedId < 0)
+                return;
+
+            ApplySelection(data, data.EditableMesh, selectionMode, pickedId);
+            currentEvent.Use();
         }
 
         /// <summary>
@@ -246,12 +276,6 @@ namespace MeshEditTools.Editor
                 {
                     Handles.DotHandleCap(0, vert.Position, Quaternion.identity, size, EventType.Repaint);
                 }
-
-                if (selectionMode == MeshSelectionMode.Vertex &&
-                    Handles.Button(vert.Position, Quaternion.identity, size, size, Handles.DotHandleCap))
-                {
-                    ApplySelection(data, mesh, MeshSelectionMode.Vertex, v);
-                }
             }
         }
 
@@ -273,16 +297,6 @@ namespace MeshEditTools.Editor
                 if (Event.current.type == EventType.Repaint)
                 {
                     Handles.DrawLine(v0.Position, v1.Position);
-                }
-
-                if (selectionMode == MeshSelectionMode.Edge)
-                {
-                    Vector3 center = (v0.Position + v1.Position) * 0.5f;
-                    float size = HandleUtility.GetHandleSize(center) * EdgePickScale;
-                    if (Handles.Button(center, Quaternion.identity, size, size, Handles.DotHandleCap))
-                    {
-                        ApplySelection(data, mesh, MeshSelectionMode.Edge, e);
-                    }
                 }
             }
         }
@@ -319,20 +333,6 @@ namespace MeshEditTools.Editor
                     Handles.DrawAAConvexPolygon(positions);
                     Handles.color = selected ? FaceOutlineSelectedColor : FaceOutlineColor;
                     Handles.DrawAAPolyLine(2f, positions);
-                }
-
-                if (selectionMode == MeshSelectionMode.Face)
-                {
-                    Vector3 center = Vector3.zero;
-                    for (int i = 0; i < positions.Length; i++)
-                        center += positions[i];
-                    center /= positions.Length;
-
-                    float size = HandleUtility.GetHandleSize(center) * FacePickScale;
-                    if (Handles.Button(center, Quaternion.identity, size, size, Handles.RectangleHandleCap))
-                    {
-                        ApplySelection(data, mesh, MeshSelectionMode.Face, f);
-                    }
                 }
             }
         }
@@ -684,6 +684,98 @@ namespace MeshEditTools.Editor
             }
 
             return (byte)(flags & ~(byte)MeshElementFlags.Selected);
+        }
+
+        private static int FindPickedElementId(EditableMesh mesh, MeshSelectionMode selectionMode, Transform targetTransform, Vector2 mousePosition)
+        {
+            int bestId = -1;
+            float bestSqrDistance = float.MaxValue;
+
+            switch (selectionMode)
+            {
+                case MeshSelectionMode.Vertex:
+                    for (int v = 0; v < mesh.Verts.Capacity; v++)
+                    {
+                        if (!mesh.Verts.IsAlive(v))
+                            continue;
+
+                        Vector3 world = targetTransform.TransformPoint(mesh.Verts[v].Position);
+                        Vector2 guiPoint = HandleUtility.WorldToGUIPoint(world);
+                        float sqrDistance = (guiPoint - mousePosition).sqrMagnitude;
+                        if (sqrDistance <= VertexPickGuiRadius * VertexPickGuiRadius && sqrDistance < bestSqrDistance)
+                        {
+                            bestSqrDistance = sqrDistance;
+                            bestId = v;
+                        }
+                    }
+                    break;
+                case MeshSelectionMode.Edge:
+                    for (int e = 0; e < mesh.Edges.Capacity; e++)
+                    {
+                        if (!mesh.Edges.IsAlive(e))
+                            continue;
+
+                        ref var edge = ref mesh.Edges[e];
+                        Vector3 v0World = targetTransform.TransformPoint(mesh.Verts[edge.V0.Value].Position);
+                        Vector3 v1World = targetTransform.TransformPoint(mesh.Verts[edge.V1.Value].Position);
+                        Vector2 v0Gui = HandleUtility.WorldToGUIPoint(v0World);
+                        Vector2 v1Gui = HandleUtility.WorldToGUIPoint(v1World);
+                        float sqrDistance = DistancePointToSegmentSqr(mousePosition, v0Gui, v1Gui);
+                        if (sqrDistance <= EdgePickGuiRadius * EdgePickGuiRadius && sqrDistance < bestSqrDistance)
+                        {
+                            bestSqrDistance = sqrDistance;
+                            bestId = e;
+                        }
+                    }
+                    break;
+                case MeshSelectionMode.Face:
+                    for (int f = 0; f < mesh.Faces.Capacity; f++)
+                    {
+                        if (!mesh.Faces.IsAlive(f))
+                            continue;
+
+                        ref var face = ref mesh.Faces[f];
+                        if (face.AnyLoop < 0 || face.LoopCount < 3)
+                            continue;
+
+                        Vector3 center = Vector3.zero;
+                        int loopId = face.AnyLoop;
+                        for (int i = 0; i < face.LoopCount; i++)
+                        {
+                            var loop = mesh.Loops[loopId];
+                            center += mesh.Verts[loop.Vert.Value].Position;
+                            loopId = loop.Next;
+                            if (loopId < 0)
+                                break;
+                        }
+
+                        center /= face.LoopCount;
+                        Vector3 world = targetTransform.TransformPoint(center);
+                        Vector2 guiPoint = HandleUtility.WorldToGUIPoint(world);
+                        float sqrDistance = (guiPoint - mousePosition).sqrMagnitude;
+                        if (sqrDistance <= FacePickGuiRadius * FacePickGuiRadius && sqrDistance < bestSqrDistance)
+                        {
+                            bestSqrDistance = sqrDistance;
+                            bestId = f;
+                        }
+                    }
+                    break;
+            }
+
+            return bestId;
+        }
+
+        private static float DistancePointToSegmentSqr(Vector2 point, Vector2 a, Vector2 b)
+        {
+            Vector2 ab = b - a;
+            float abSqr = ab.sqrMagnitude;
+            if (abSqr <= Mathf.Epsilon)
+                return (point - a).sqrMagnitude;
+
+            float t = Vector2.Dot(point - a, ab) / abSqr;
+            t = Mathf.Clamp01(t);
+            Vector2 projection = a + t * ab;
+            return (point - projection).sqrMagnitude;
         }
     }
 }
