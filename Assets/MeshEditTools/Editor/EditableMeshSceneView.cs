@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
 
@@ -59,6 +60,7 @@ namespace MeshEditTools.Editor
             DrawFaces(component, mesh);
             DrawEdges(component, mesh);
             DrawVertices(component, mesh);
+            DrawMoveHandle(component, mesh);
             Handles.matrix = Matrix4x4.identity;
         }
 
@@ -170,6 +172,105 @@ namespace MeshEditTools.Editor
                     }
                 }
             }
+        }
+
+        /// <summary>
+        /// Draws a move handle for the current selection and applies position deltas.
+        /// </summary>
+        private static void DrawMoveHandle(EditableMeshComponent component, EditableMesh mesh)
+        {
+            if (Tools.current != Tool.Move)
+                return;
+
+            var selectedVerts = CollectSelectedVertices(component, mesh);
+            if (selectedVerts.Count == 0)
+                return;
+
+            Vector3 centroid = Vector3.zero;
+            foreach (int vertId in selectedVerts)
+            {
+                centroid += mesh.Verts[vertId].Position;
+            }
+            centroid /= selectedVerts.Count;
+
+            EditorGUI.BeginChangeCheck();
+            Vector3 newPosition = Handles.PositionHandle(centroid, Quaternion.identity);
+            if (!EditorGUI.EndChangeCheck())
+                return;
+
+            Vector3 delta = newPosition - centroid;
+            if (delta.sqrMagnitude <= Mathf.Epsilon)
+                return;
+
+            Undo.RecordObject(component, "Move Mesh Elements");
+            foreach (int vertId in selectedVerts)
+            {
+                ref var vert = ref mesh.Verts[vertId];
+                vert.Position += delta;
+            }
+
+            EditorUtility.SetDirty(component);
+            SceneView.RepaintAll();
+        }
+
+        /// <summary>
+        /// Collects the vertex ids affected by the current selection mode.
+        /// </summary>
+        private static HashSet<int> CollectSelectedVertices(EditableMeshComponent component, EditableMesh mesh)
+        {
+            var selected = new HashSet<int>();
+            switch (component.SelectionMode)
+            {
+                case MeshSelectionMode.Vertex:
+                    for (int v = 0; v < mesh.Verts.Capacity; v++)
+                    {
+                        if (!mesh.Verts.IsAlive(v))
+                            continue;
+
+                        if (IsSelected(mesh.Verts[v].Flags))
+                        {
+                            selected.Add(v);
+                        }
+                    }
+                    break;
+                case MeshSelectionMode.Edge:
+                    for (int e = 0; e < mesh.Edges.Capacity; e++)
+                    {
+                        if (!mesh.Edges.IsAlive(e))
+                            continue;
+
+                        if (!IsSelected(mesh.Edges[e].Flags))
+                            continue;
+
+                        var edge = mesh.Edges[e];
+                        selected.Add(edge.V0.Value);
+                        selected.Add(edge.V1.Value);
+                    }
+                    break;
+                case MeshSelectionMode.Face:
+                    for (int f = 0; f < mesh.Faces.Capacity; f++)
+                    {
+                        if (!mesh.Faces.IsAlive(f))
+                            continue;
+
+                        ref var face = ref mesh.Faces[f];
+                        if (!IsSelected(face.Flags) || face.AnyLoop < 0 || face.LoopCount < 1)
+                            continue;
+
+                        int loopId = face.AnyLoop;
+                        for (int i = 0; i < face.LoopCount; i++)
+                        {
+                            var loop = mesh.Loops[loopId];
+                            selected.Add(loop.Vert.Value);
+                            loopId = loop.Next;
+                            if (loopId < 0)
+                                break;
+                        }
+                    }
+                    break;
+            }
+
+            return selected;
         }
 
         /// <summary>
