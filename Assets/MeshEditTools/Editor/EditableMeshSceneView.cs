@@ -34,6 +34,11 @@ namespace MeshEditTools.Editor
         private static Quaternion lastRotation = Quaternion.identity;
         private static bool isScaling;
         private static Vector3 lastScale = Vector3.one;
+        private static readonly HashSet<int> CachedSelectedVerts = new();
+        private static readonly HashSet<int> CachedMovedVerts = new();
+        private static bool selectionCacheDirty = true;
+        private static Vector3[] facePositionsBuffer = System.Array.Empty<Vector3>();
+        private static MeshSelectionMode cachedSelectionMode = MeshSelectionMode.Vertex;
 
         /// <summary>
         /// Registers the scene GUI callback when the editor loads.
@@ -255,6 +260,7 @@ namespace MeshEditTools.Editor
             }
 
             EditorUtility.SetDirty(data);
+            MarkSelectionCacheDirty();
         }
 
         /// <summary>
@@ -315,7 +321,7 @@ namespace MeshEditTools.Editor
                 if (face.AnyLoop < 0 || face.LoopCount < 3)
                     continue;
 
-                var positions = new Vector3[face.LoopCount];
+                Vector3[] positions = GetFacePositionsBuffer(face.LoopCount);
                 int loopId = face.AnyLoop;
                 for (int i = 0; i < face.LoopCount; i++)
                 {
@@ -326,9 +332,15 @@ namespace MeshEditTools.Editor
                         break;
                 }
 
+                Vector3 lastPosition = positions[face.LoopCount - 1];
+                for (int i = face.LoopCount; i < positions.Length; i++)
+                {
+                    positions[i] = lastPosition;
+                }
+
                 bool selected = IsSelected(face.Flags);
                 Handles.color = selected ? FaceSelectedColor : FaceColor;
-                if (positions.Length >= 3 && Event.current.type == EventType.Repaint)
+                if (face.LoopCount >= 3 && Event.current.type == EventType.Repaint)
                 {
                     Handles.DrawAAConvexPolygon(positions);
                     Handles.color = selected ? FaceOutlineSelectedColor : FaceOutlineColor;
@@ -371,9 +383,9 @@ namespace MeshEditTools.Editor
         /// <summary>
         /// Collects the vertex ids affected by the current selection mode.
         /// </summary>
-        private static HashSet<int> CollectSelectedVertices(MeshSelectionMode selectionMode, EditableMesh mesh)
+        private static void CollectSelectedVertices(MeshSelectionMode selectionMode, EditableMesh mesh, HashSet<int> selected)
         {
-            var selected = new HashSet<int>();
+            selected.Clear();
             switch (selectionMode)
             {
                 case MeshSelectionMode.Vertex:
@@ -425,14 +437,12 @@ namespace MeshEditTools.Editor
                     break;
             }
 
-            return selected;
         }
 
-        private static HashSet<int> CollectCoincidentVertices(EditableMesh mesh, HashSet<int> selectedVerts)
+        private static void CollectCoincidentVertices(EditableMesh mesh, HashSet<int> selectedVerts, HashSet<int> coincident)
         {
             const float epsilon = 1e-6f;
             float epsilonSqr = epsilon * epsilon;
-            var coincident = new HashSet<int>();
 
             foreach (int selectedVertId in selectedVerts)
             {
@@ -450,32 +460,41 @@ namespace MeshEditTools.Editor
                 }
             }
 
-            return coincident;
         }
 
         private static bool TryGetSelectionData(EditableMesh mesh, MeshSelectionMode selectionMode, out Vector3 centroid,
             out HashSet<int> movedVerts)
         {
-            var selectedVerts = CollectSelectedVertices(selectionMode, mesh);
-            if (selectedVerts.Count == 0)
+            if (selectionMode != cachedSelectionMode)
+            {
+                cachedSelectionMode = selectionMode;
+                selectionCacheDirty = true;
+            }
+
+            if (selectionCacheDirty)
+            {
+                CollectSelectedVertices(selectionMode, mesh, CachedSelectedVerts);
+                selectionCacheDirty = false;
+            }
+
+            CachedMovedVerts.Clear();
+            CachedMovedVerts.UnionWith(CachedSelectedVerts);
+            CollectCoincidentVertices(mesh, CachedSelectedVerts, CachedMovedVerts);
+
+            if (CachedSelectedVerts.Count == 0)
             {
                 centroid = Vector3.zero;
-                movedVerts = new HashSet<int>();
+                movedVerts = CachedMovedVerts;
                 return false;
             }
 
             centroid = Vector3.zero;
-            foreach (int vertId in selectedVerts)
+            foreach (int vertId in CachedSelectedVerts)
             {
                 centroid += mesh.Verts[vertId].Position;
             }
-            centroid /= selectedVerts.Count;
-
-            movedVerts = new HashSet<int>(selectedVerts);
-            foreach (int coincident in CollectCoincidentVertices(mesh, selectedVerts))
-            {
-                movedVerts.Add(coincident);
-            }
+            centroid /= CachedSelectedVerts.Count;
+            movedVerts = CachedMovedVerts;
 
             return true;
         }
@@ -633,6 +652,7 @@ namespace MeshEditTools.Editor
 
             EditorUtility.SetDirty(data);
             SceneView.RepaintAll();
+            MarkSelectionCacheDirty();
         }
 
         /// <summary>
@@ -666,6 +686,7 @@ namespace MeshEditTools.Editor
                 ref var face = ref mesh.Faces[f];
                 face.Flags = SetSelectedFlag(face.Flags, false);
             }
+            MarkSelectionCacheDirty();
         }
 
         /// <summary>
@@ -776,6 +797,26 @@ namespace MeshEditTools.Editor
             t = Mathf.Clamp01(t);
             Vector2 projection = a + t * ab;
             return (point - projection).sqrMagnitude;
+        }
+
+        private static void MarkSelectionCacheDirty()
+        {
+            selectionCacheDirty = true;
+        }
+
+        private static Vector3[] GetFacePositionsBuffer(int requiredCount)
+        {
+            if (facePositionsBuffer.Length < requiredCount)
+            {
+                int newSize = facePositionsBuffer.Length == 0 ? 4 : facePositionsBuffer.Length;
+                while (newSize < requiredCount)
+                {
+                    newSize *= 2;
+                }
+                facePositionsBuffer = new Vector3[newSize];
+            }
+
+            return facePositionsBuffer;
         }
     }
 }
