@@ -352,6 +352,15 @@ namespace MeshEditTools.Editor
             }
             centroid /= selectedVerts.Count;
 
+            var movedVerts = new HashSet<int>(selectedVerts);
+            if (selectionMode == MeshSelectionMode.Vertex || selectionMode == MeshSelectionMode.Face)
+            {
+                foreach (int neighbor in CollectNeighborVertices(mesh, selectedVerts))
+                {
+                    movedVerts.Add(neighbor);
+                }
+            }
+
             EditorGUI.BeginChangeCheck();
             Vector3 newPosition = Handles.PositionHandle(centroid, Quaternion.identity);
             if (!EditorGUI.EndChangeCheck())
@@ -362,7 +371,7 @@ namespace MeshEditTools.Editor
                 return;
 
             Undo.RecordObject(data, "Move Mesh Elements");
-            foreach (int vertId in selectedVerts)
+            foreach (int vertId in movedVerts)
             {
                 ref var vert = ref mesh.Verts[vertId];
                 vert.Position += delta;
@@ -430,6 +439,33 @@ namespace MeshEditTools.Editor
             }
 
             return selected;
+        }
+
+        private static HashSet<int> CollectNeighborVertices(EditableMesh mesh, HashSet<int> selectedVerts)
+        {
+            var neighbors = new HashSet<int>();
+            for (int e = 0; e < mesh.Edges.Capacity; e++)
+            {
+                if (!mesh.Edges.IsAlive(e))
+                    continue;
+
+                var edge = mesh.Edges[e];
+                int v0 = edge.V0.Value;
+                int v1 = edge.V1.Value;
+                bool v0Selected = selectedVerts.Contains(v0);
+                bool v1Selected = selectedVerts.Contains(v1);
+
+                if (v0Selected && !v1Selected)
+                {
+                    neighbors.Add(v1);
+                }
+                else if (v1Selected && !v0Selected)
+                {
+                    neighbors.Add(v0);
+                }
+            }
+
+            return neighbors;
         }
 
         /// <summary>
