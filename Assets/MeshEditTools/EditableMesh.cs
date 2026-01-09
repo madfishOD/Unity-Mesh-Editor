@@ -3,6 +3,9 @@ using UnityEngine;
 
 namespace MeshEditTools
 {
+/// <summary>
+/// Editable half-edge-like mesh representation used for in-editor mesh manipulation.
+/// </summary>
 [Serializable]
 public class EditableMesh
 {
@@ -15,6 +18,9 @@ public class EditableMesh
     // Key: (minVert,maxVert) -> edgeId
     [NonSerialized] private System.Collections.Generic.Dictionary<ulong, int> _edgeMap;
 
+    /// <summary>
+    /// Clears all mesh data and cached edge lookups.
+    /// </summary>
     public void Clear()
     {
         Verts = new SlotList<BmVert>();
@@ -24,6 +30,9 @@ public class EditableMesh
         _edgeMap = null;
     }
 
+    /// <summary>
+    /// Rebuilds edge lookup caches from the current edge list.
+    /// </summary>
     public void RebuildCaches()
     {
         _edgeMap = new System.Collections.Generic.Dictionary<ulong, int>(1024);
@@ -38,6 +47,9 @@ public class EditableMesh
         }
     }
 
+    /// <summary>
+    /// Returns a stable 64-bit key for an unordered vertex pair.
+    /// </summary>
     static ulong MakeEdgeKey(int a, int b)
     {
         uint lo = (uint)Mathf.Min(a, b);
@@ -45,6 +57,9 @@ public class EditableMesh
         return ((ulong)hi << 32) | lo;
     }
 
+    /// <summary>
+    /// Adds a vertex to the mesh and returns its id.
+    /// </summary>
     public VertId AddVert(Vector3 pos)
     {
         int id = Verts.Allocate();
@@ -52,6 +67,9 @@ public class EditableMesh
         return new VertId(id);
     }
 
+    /// <summary>
+    /// Retrieves an edge between two vertices or creates it if missing.
+    /// </summary>
     public EdgeId GetOrCreateEdge(VertId a, VertId b)
     {
         _edgeMap ??= new System.Collections.Generic.Dictionary<ulong, int>(1024);
@@ -138,6 +156,9 @@ public class EditableMesh
         return new FaceId(fId);
     }
 
+    /// <summary>
+    /// Creates a face from an ordered list of vertex ids and optional UV0 data.
+    /// </summary>
     public FaceId AddFace(System.Collections.Generic.IReadOnlyList<VertId> faceVerts, System.Collections.Generic.IReadOnlyList<Vector2> uv0, int materialIndex = 0)
     {
         var faceId = AddFace(faceVerts, materialIndex);
@@ -148,6 +169,9 @@ public class EditableMesh
         return faceId;
     }
 
+    /// <summary>
+    /// Assigns UV0 values to each loop of a face, clamped to available data.
+    /// </summary>
     public void SetFaceUVs(FaceId faceId, System.Collections.Generic.IReadOnlyList<Vector2> uv0)
     {
         if (!faceId.IsValid)
@@ -169,6 +193,9 @@ public class EditableMesh
         }
     }
 
+    /// <summary>
+    /// Creates a new editable mesh from a Unity Mesh instance.
+    /// </summary>
     public static EditableMesh FromUnityMesh(Mesh source)
     {
         if (source == null)
@@ -179,6 +206,9 @@ public class EditableMesh
         return editable;
     }
 
+    /// <summary>
+    /// Replaces the mesh data with contents from a Unity Mesh instance.
+    /// </summary>
     public void LoadFromUnityMesh(Mesh source)
     {
         if (source == null)
@@ -225,6 +255,9 @@ public class EditableMesh
         RebuildCaches();
     }
 
+    /// <summary>
+    /// Inserts a loop into the radial cycle for its edge.
+    /// </summary>
     private void InsertLoopIntoEdgeRadial(int loopId)
     {
         ref var l = ref Loops[loopId];
@@ -254,6 +287,9 @@ public class EditableMesh
         lb.RadialPrev = loopId;
     }
 
+    /// <summary>
+    /// Creates a Unity Mesh from the current editable mesh data.
+    /// </summary>
     public Mesh BakeToUnityMesh()
     {
         var mesh = new Mesh();
@@ -315,6 +351,9 @@ public class EditableMesh
         return mesh;
     }
 
+    /// <summary>
+    /// Emits a triangle into the triangle list, deduplicating render vertices.
+    /// </summary>
     private void AddTriangle(
         int loopA,
         int loopB,
@@ -330,6 +369,9 @@ public class EditableMesh
         triangles.Add(GetRenderVertexIndex(loopC, materialIndex, vertexMap, vertices, uv0));
     }
 
+    /// <summary>
+    /// Gets or creates the render vertex index for the given loop data.
+    /// </summary>
     private int GetRenderVertexIndex(
         int loopId,
         int materialIndex,
@@ -350,8 +392,14 @@ public class EditableMesh
         return index;
     }
 
+    /// <summary>
+    /// Key for deduplicating render vertices by position, UV, and material.
+    /// </summary>
     private readonly struct RenderVertexKey : IEquatable<RenderVertexKey>
     {
+        /// <summary>
+        /// Creates a key from the source vertex id, UV, and material index.
+        /// </summary>
         public RenderVertexKey(int vertId, Vector2 uv0, int materialIndex)
         {
             VertId = vertId;
@@ -359,20 +407,38 @@ public class EditableMesh
             MaterialIndex = materialIndex;
         }
 
+        /// <summary>
+        /// The source vertex id.
+        /// </summary>
         public int VertId { get; }
+        /// <summary>
+        /// The UV0 coordinate for this render vertex.
+        /// </summary>
         public Vector2 Uv0 { get; }
+        /// <summary>
+        /// The material index for this render vertex.
+        /// </summary>
         public int MaterialIndex { get; }
 
+        /// <summary>
+        /// Tests for value equality.
+        /// </summary>
         public bool Equals(RenderVertexKey other)
         {
             return VertId == other.VertId && Uv0.Equals(other.Uv0) && MaterialIndex == other.MaterialIndex;
         }
 
+        /// <summary>
+        /// Tests for value equality with boxed objects.
+        /// </summary>
         public override bool Equals(object obj)
         {
             return obj is RenderVertexKey other && Equals(other);
         }
 
+        /// <summary>
+        /// Hashes the key for dictionary usage.
+        /// </summary>
         public override int GetHashCode()
         {
             return HashCode.Combine(VertId, Uv0, MaterialIndex);
