@@ -352,6 +352,12 @@ namespace MeshEditTools.Editor
             }
             centroid /= selectedVerts.Count;
 
+            var movedVerts = new HashSet<int>(selectedVerts);
+            foreach (int coincident in CollectCoincidentVertices(mesh, selectedVerts))
+            {
+                movedVerts.Add(coincident);
+            }
+
             EditorGUI.BeginChangeCheck();
             Vector3 newPosition = Handles.PositionHandle(centroid, Quaternion.identity);
             if (!EditorGUI.EndChangeCheck())
@@ -362,7 +368,7 @@ namespace MeshEditTools.Editor
                 return;
 
             Undo.RecordObject(data, "Move Mesh Elements");
-            foreach (int vertId in selectedVerts)
+            foreach (int vertId in movedVerts)
             {
                 ref var vert = ref mesh.Verts[vertId];
                 vert.Position += delta;
@@ -430,6 +436,31 @@ namespace MeshEditTools.Editor
             }
 
             return selected;
+        }
+
+        private static HashSet<int> CollectCoincidentVertices(EditableMesh mesh, HashSet<int> selectedVerts)
+        {
+            const float epsilon = 1e-6f;
+            float epsilonSqr = epsilon * epsilon;
+            var coincident = new HashSet<int>();
+
+            foreach (int selectedVertId in selectedVerts)
+            {
+                Vector3 selectedPosition = mesh.Verts[selectedVertId].Position;
+                for (int v = 0; v < mesh.Verts.Capacity; v++)
+                {
+                    if (!mesh.Verts.IsAlive(v) || selectedVerts.Contains(v))
+                        continue;
+
+                    Vector3 delta = mesh.Verts[v].Position - selectedPosition;
+                    if (delta.sqrMagnitude <= epsilonSqr)
+                    {
+                        coincident.Add(v);
+                    }
+                }
+            }
+
+            return coincident;
         }
 
         /// <summary>
