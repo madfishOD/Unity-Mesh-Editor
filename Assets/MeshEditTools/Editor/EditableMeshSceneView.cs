@@ -39,6 +39,7 @@ namespace MeshEditTools.Editor
         private static bool selectionCacheDirty = true;
         private static Vector3[] facePositionsBuffer = System.Array.Empty<Vector3>();
         private static MeshSelectionMode cachedSelectionMode = MeshSelectionMode.Vertex;
+        private static Material vertexBillboardMaterial;
 
         /// <summary>
         /// Registers the scene GUI callback when the editor loads.
@@ -268,6 +269,25 @@ namespace MeshEditTools.Editor
         /// </summary>
         private static void DrawVertices(EditableMeshSessionData data, EditableMesh mesh, MeshSelectionMode selectionMode)
         {
+            if (Event.current.type != EventType.Repaint)
+                return;
+
+            var sceneView = SceneView.currentDrawingSceneView;
+            var camera = sceneView != null ? sceneView.camera : null;
+            if (camera == null)
+                return;
+
+            EnsureVertexBillboardMaterial();
+            if (vertexBillboardMaterial == null)
+                return;
+            vertexBillboardMaterial.SetPass(0);
+
+            Matrix4x4 localToWorld = Handles.matrix;
+            Vector3 cameraRight = camera.transform.right;
+            Vector3 cameraUp = camera.transform.up;
+
+            GL.PushMatrix();
+            GL.Begin(GL.QUADS);
             for (int v = 0; v < mesh.Verts.Capacity; v++)
             {
                 if (!mesh.Verts.IsAlive(v))
@@ -275,14 +295,38 @@ namespace MeshEditTools.Editor
 
                 ref var vert = ref mesh.Verts[v];
                 bool selected = IsSelected(vert.Flags);
-                Handles.color = selected ? VertexSelectedColor : VertexColor;
+                GL.Color(selected ? VertexSelectedColor : VertexColor);
 
-                float size = HandleUtility.GetHandleSize(vert.Position) * VertexSizeScale;
-                if (Event.current.type == EventType.Repaint)
-                {
-                    Handles.DotHandleCap(0, vert.Position, Quaternion.identity, size, EventType.Repaint);
-                }
+                Vector3 worldPosition = localToWorld.MultiplyPoint3x4(vert.Position);
+                float size = HandleUtility.GetHandleSize(worldPosition) * VertexSizeScale;
+                Vector3 right = cameraRight * size;
+                Vector3 up = cameraUp * size;
+
+                GL.Vertex(worldPosition - right - up);
+                GL.Vertex(worldPosition - right + up);
+                GL.Vertex(worldPosition + right + up);
+                GL.Vertex(worldPosition + right - up);
             }
+            GL.End();
+            GL.PopMatrix();
+        }
+
+        private static void EnsureVertexBillboardMaterial()
+        {
+            if (vertexBillboardMaterial != null)
+                return;
+
+            Shader shader = Shader.Find("Hidden/Internal-Colored");
+            if (shader == null)
+                return;
+            vertexBillboardMaterial = new Material(shader)
+            {
+                hideFlags = HideFlags.HideAndDontSave
+            };
+            vertexBillboardMaterial.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            vertexBillboardMaterial.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+            vertexBillboardMaterial.SetInt("_Cull", (int)UnityEngine.Rendering.CullMode.Off);
+            vertexBillboardMaterial.SetInt("_ZWrite", 0);
         }
 
         /// <summary>
