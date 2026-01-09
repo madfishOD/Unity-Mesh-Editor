@@ -355,9 +355,9 @@ namespace MeshEditTools.Editor
             var movedVerts = new HashSet<int>(selectedVerts);
             if (selectionMode == MeshSelectionMode.Vertex || selectionMode == MeshSelectionMode.Face)
             {
-                foreach (int neighbor in CollectNeighborVertices(mesh, selectedVerts))
+                foreach (int coincident in CollectCoincidentVertices(mesh, selectedVerts))
                 {
-                    movedVerts.Add(neighbor);
+                    movedVerts.Add(coincident);
                 }
             }
 
@@ -441,31 +441,29 @@ namespace MeshEditTools.Editor
             return selected;
         }
 
-        private static HashSet<int> CollectNeighborVertices(EditableMesh mesh, HashSet<int> selectedVerts)
+        private static HashSet<int> CollectCoincidentVertices(EditableMesh mesh, HashSet<int> selectedVerts)
         {
-            var neighbors = new HashSet<int>();
-            for (int e = 0; e < mesh.Edges.Capacity; e++)
+            const float epsilon = 1e-6f;
+            float epsilonSqr = epsilon * epsilon;
+            var coincident = new HashSet<int>();
+
+            foreach (int selectedVertId in selectedVerts)
             {
-                if (!mesh.Edges.IsAlive(e))
-                    continue;
-
-                var edge = mesh.Edges[e];
-                int v0 = edge.V0.Value;
-                int v1 = edge.V1.Value;
-                bool v0Selected = selectedVerts.Contains(v0);
-                bool v1Selected = selectedVerts.Contains(v1);
-
-                if (v0Selected && !v1Selected)
+                Vector3 selectedPosition = mesh.Verts[selectedVertId].Position;
+                for (int v = 0; v < mesh.Verts.Capacity; v++)
                 {
-                    neighbors.Add(v1);
-                }
-                else if (v1Selected && !v0Selected)
-                {
-                    neighbors.Add(v0);
+                    if (!mesh.Verts.IsAlive(v) || selectedVerts.Contains(v))
+                        continue;
+
+                    Vector3 delta = mesh.Verts[v].Position - selectedPosition;
+                    if (delta.sqrMagnitude <= epsilonSqr)
+                    {
+                        coincident.Add(v);
+                    }
                 }
             }
 
-            return neighbors;
+            return coincident;
         }
 
         /// <summary>
