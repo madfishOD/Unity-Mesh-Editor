@@ -60,12 +60,14 @@ namespace MeshEditTools.Editor
                         EditableMeshSession.SetSelectionMode((MeshSelectionMode)modeIndex);
                     }
 
-                    bool moveToolActive = Tools.current == Tool.Move;
+                    EditorGUILayout.Space(2f);
+                    var toolLabels = new[] { "Select Tool", "Move Tool" };
+                    int toolIndex = Tools.current == Tool.Move ? 1 : 0;
                     EditorGUI.BeginChangeCheck();
-                    moveToolActive = GUILayout.Toggle(moveToolActive, "Move Tool", "Button");
+                    toolIndex = GUILayout.Toolbar(toolIndex, toolLabels);
                     if (EditorGUI.EndChangeCheck())
                     {
-                        Tools.current = moveToolActive ? Tool.Move : Tool.None;
+                        Tools.current = toolIndex == 1 ? Tool.Move : Tool.None;
                     }
                 }
 

@@ -80,7 +80,7 @@ namespace MeshEditTools.Editor
                 return;
 
             Event currentEvent = Event.current;
-            if (currentEvent.alt)
+            if (currentEvent.alt || Tools.current != Tool.None)
                 return;
 
             if (currentEvent.type == EventType.MouseDown && currentEvent.button == 0)
