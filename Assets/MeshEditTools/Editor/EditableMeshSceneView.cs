@@ -353,7 +353,7 @@ namespace MeshEditTools.Editor
             centroid /= selectedVerts.Count;
 
             var movedVerts = new HashSet<int>(selectedVerts);
-            if (selectionMode == MeshSelectionMode.Vertex || selectionMode == MeshSelectionMode.Face)
+            if (selectionMode == MeshSelectionMode.Vertex || selectionMode == MeshSelectionMode.Edge || selectionMode == MeshSelectionMode.Face)
             {
                 foreach (int coincident in CollectCoincidentVertices(mesh, selectedVerts))
                 {
