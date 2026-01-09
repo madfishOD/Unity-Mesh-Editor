@@ -31,43 +31,43 @@ namespace MeshEditTools.Editor
         }
 
         /// <summary>
-        /// Handles scene GUI events for selected editable mesh components.
+        /// Handles scene GUI events for the active editable mesh session.
         /// </summary>
         private static void OnSceneGui(SceneView sceneView)
         {
-            var targets = Selection.GetFiltered<EditableMeshComponent>(SelectionMode.TopLevel);
-            if (targets.Length == 0)
+            if (!EditableMeshSession.EditModeEnabled)
                 return;
 
-            foreach (var target in targets)
-            {
-                DrawEditableMesh(target);
-            }
+            var data = EditableMeshSession.ActiveData;
+            var filter = EditableMeshSession.ActiveMeshFilter;
+            if (data == null || data.EditableMesh == null || filter == null)
+                return;
+
+            DrawEditableMesh(data, filter.transform, EditableMeshSession.SelectionMode);
         }
 
         /// <summary>
         /// Draws the mesh elements for a single component.
         /// </summary>
-        private static void DrawEditableMesh(EditableMeshComponent component)
+        private static void DrawEditableMesh(EditableMeshSessionData data, Transform targetTransform, MeshSelectionMode selectionMode)
         {
-            if (component == null || component.Mesh == null)
+            if (data == null || data.EditableMesh == null || targetTransform == null)
                 return;
 
-            var mesh = component.Mesh;
-            var transform = component.transform;
+            var mesh = data.EditableMesh;
 
-            Handles.matrix = transform.localToWorldMatrix;
-            DrawFaces(component, mesh);
-            DrawEdges(component, mesh);
-            DrawVertices(component, mesh);
-            DrawMoveHandle(component, mesh);
+            Handles.matrix = targetTransform.localToWorldMatrix;
+            DrawFaces(data, mesh, selectionMode);
+            DrawEdges(data, mesh, selectionMode);
+            DrawVertices(data, mesh, selectionMode);
+            DrawMoveHandle(data, mesh, selectionMode);
             Handles.matrix = Matrix4x4.identity;
         }
 
         /// <summary>
         /// Draws vertex handles and selection buttons.
         /// </summary>
-        private static void DrawVertices(EditableMeshComponent component, EditableMesh mesh)
+        private static void DrawVertices(EditableMeshSessionData data, EditableMesh mesh, MeshSelectionMode selectionMode)
         {
             for (int v = 0; v < mesh.Verts.Capacity; v++)
             {
@@ -84,10 +84,10 @@ namespace MeshEditTools.Editor
                     Handles.DotHandleCap(0, vert.Position, Quaternion.identity, size, EventType.Repaint);
                 }
 
-                if (component.SelectionMode == MeshSelectionMode.Vertex &&
+                if (selectionMode == MeshSelectionMode.Vertex &&
                     Handles.Button(vert.Position, Quaternion.identity, size, size, Handles.DotHandleCap))
                 {
-                    ApplySelection(component, mesh, MeshSelectionMode.Vertex, v);
+                    ApplySelection(data, mesh, MeshSelectionMode.Vertex, v);
                 }
             }
         }
@@ -95,7 +95,7 @@ namespace MeshEditTools.Editor
         /// <summary>
         /// Draws edge lines and selection handles.
         /// </summary>
-        private static void DrawEdges(EditableMeshComponent component, EditableMesh mesh)
+        private static void DrawEdges(EditableMeshSessionData data, EditableMesh mesh, MeshSelectionMode selectionMode)
         {
             for (int e = 0; e < mesh.Edges.Capacity; e++)
             {
@@ -112,13 +112,13 @@ namespace MeshEditTools.Editor
                     Handles.DrawLine(v0.Position, v1.Position);
                 }
 
-                if (component.SelectionMode == MeshSelectionMode.Edge)
+                if (selectionMode == MeshSelectionMode.Edge)
                 {
                     Vector3 center = (v0.Position + v1.Position) * 0.5f;
                     float size = HandleUtility.GetHandleSize(center) * EdgePickScale;
                     if (Handles.Button(center, Quaternion.identity, size, size, Handles.DotHandleCap))
                     {
-                        ApplySelection(component, mesh, MeshSelectionMode.Edge, e);
+                        ApplySelection(data, mesh, MeshSelectionMode.Edge, e);
                     }
                 }
             }
@@ -127,7 +127,7 @@ namespace MeshEditTools.Editor
         /// <summary>
         /// Draws face polygons and selection handles.
         /// </summary>
-        private static void DrawFaces(EditableMeshComponent component, EditableMesh mesh)
+        private static void DrawFaces(EditableMeshSessionData data, EditableMesh mesh, MeshSelectionMode selectionMode)
         {
             for (int f = 0; f < mesh.Faces.Capacity; f++)
             {
@@ -158,7 +158,7 @@ namespace MeshEditTools.Editor
                     Handles.DrawAAPolyLine(2f, positions);
                 }
 
-                if (component.SelectionMode == MeshSelectionMode.Face)
+                if (selectionMode == MeshSelectionMode.Face)
                 {
                     Vector3 center = Vector3.zero;
                     for (int i = 0; i < positions.Length; i++)
@@ -168,7 +168,7 @@ namespace MeshEditTools.Editor
                     float size = HandleUtility.GetHandleSize(center) * FacePickScale;
                     if (Handles.Button(center, Quaternion.identity, size, size, Handles.RectangleHandleCap))
                     {
-                        ApplySelection(component, mesh, MeshSelectionMode.Face, f);
+                        ApplySelection(data, mesh, MeshSelectionMode.Face, f);
                     }
                 }
             }
@@ -177,12 +177,12 @@ namespace MeshEditTools.Editor
         /// <summary>
         /// Draws a move handle for the current selection and applies position deltas.
         /// </summary>
-        private static void DrawMoveHandle(EditableMeshComponent component, EditableMesh mesh)
+        private static void DrawMoveHandle(EditableMeshSessionData data, EditableMesh mesh, MeshSelectionMode selectionMode)
         {
             if (Tools.current != Tool.Move)
                 return;
 
-            var selectedVerts = CollectSelectedVertices(component, mesh);
+            var selectedVerts = CollectSelectedVertices(selectionMode, mesh);
             if (selectedVerts.Count == 0)
                 return;
 
@@ -202,24 +202,24 @@ namespace MeshEditTools.Editor
             if (delta.sqrMagnitude <= Mathf.Epsilon)
                 return;
 
-            Undo.RecordObject(component, "Move Mesh Elements");
+            Undo.RecordObject(data, "Move Mesh Elements");
             foreach (int vertId in selectedVerts)
             {
                 ref var vert = ref mesh.Verts[vertId];
                 vert.Position += delta;
             }
 
-            EditorUtility.SetDirty(component);
+            EditorUtility.SetDirty(data);
             SceneView.RepaintAll();
         }
 
         /// <summary>
         /// Collects the vertex ids affected by the current selection mode.
         /// </summary>
-        private static HashSet<int> CollectSelectedVertices(EditableMeshComponent component, EditableMesh mesh)
+        private static HashSet<int> CollectSelectedVertices(MeshSelectionMode selectionMode, EditableMesh mesh)
         {
             var selected = new HashSet<int>();
-            switch (component.SelectionMode)
+            switch (selectionMode)
             {
                 case MeshSelectionMode.Vertex:
                     for (int v = 0; v < mesh.Verts.Capacity; v++)
@@ -276,10 +276,10 @@ namespace MeshEditTools.Editor
         /// <summary>
         /// Applies selection changes for a mesh element.
         /// </summary>
-        private static void ApplySelection(EditableMeshComponent component, EditableMesh mesh, MeshSelectionMode mode, int id)
+        private static void ApplySelection(EditableMeshSessionData data, EditableMesh mesh, MeshSelectionMode mode, int id)
         {
             bool toggle = Event.current.shift;
-            Undo.RecordObject(component, "Select Mesh Element");
+            Undo.RecordObject(data, "Select Mesh Element");
 
             if (!toggle)
             {
@@ -302,7 +302,7 @@ namespace MeshEditTools.Editor
                     break;
             }
 
-            EditorUtility.SetDirty(component);
+            EditorUtility.SetDirty(data);
             SceneView.RepaintAll();
         }
 
