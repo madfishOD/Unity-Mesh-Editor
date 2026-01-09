@@ -21,6 +21,12 @@ namespace MeshEditTools.Editor
         private static readonly Color FaceSelectedColor = new(1f, 0.6f, 0.1f, 0.2f);
         private static readonly Color FaceOutlineColor = new(0.2f, 0.6f, 0.9f, 0.4f);
         private static readonly Color FaceOutlineSelectedColor = new(1f, 0.6f, 0.1f, 0.8f);
+        private const float DragSelectThreshold = 6f;
+        private static readonly Color DragSelectionFillColor = new(0.2f, 0.6f, 0.9f, 0.12f);
+        private static readonly Color DragSelectionOutlineColor = new(0.2f, 0.6f, 0.9f, 0.9f);
+        private static bool isDragSelecting;
+        private static Vector2 dragStart;
+        private static Rect dragRect;
 
         /// <summary>
         /// Registers the scene GUI callback when the editor loads.
@@ -43,6 +49,7 @@ namespace MeshEditTools.Editor
             if (data == null || data.EditableMesh == null || filter == null)
                 return;
 
+            HandleDragSelection(data, filter.transform, EditableMeshSession.SelectionMode);
             DrawEditableMesh(data, filter.transform, EditableMeshSession.SelectionMode);
         }
 
@@ -62,6 +69,158 @@ namespace MeshEditTools.Editor
             DrawVertices(data, mesh, selectionMode);
             DrawMoveHandle(data, mesh, selectionMode);
             Handles.matrix = Matrix4x4.identity;
+        }
+
+        /// <summary>
+        /// Handles drag rectangle selection in the scene view.
+        /// </summary>
+        private static void HandleDragSelection(EditableMeshSessionData data, Transform targetTransform, MeshSelectionMode selectionMode)
+        {
+            if (data == null || data.EditableMesh == null || targetTransform == null)
+                return;
+
+            Event currentEvent = Event.current;
+            if (currentEvent.alt || Tools.current != Tool.None)
+                return;
+
+            if (currentEvent.type == EventType.MouseDown && currentEvent.button == 0)
+            {
+                dragStart = currentEvent.mousePosition;
+            }
+
+            if (currentEvent.type == EventType.MouseDrag && currentEvent.button == 0)
+            {
+                if (!isDragSelecting)
+                {
+                    if ((currentEvent.mousePosition - dragStart).sqrMagnitude >= DragSelectThreshold * DragSelectThreshold)
+                    {
+                        isDragSelecting = true;
+                        GUIUtility.hotControl = GUIUtility.GetControlID(FocusType.Passive);
+                    }
+                }
+
+                if (isDragSelecting)
+                {
+                    dragRect = GetDragRect(dragStart, currentEvent.mousePosition);
+                    currentEvent.Use();
+                    SceneView.RepaintAll();
+                }
+            }
+
+            if (isDragSelecting && currentEvent.type == EventType.MouseUp && currentEvent.button == 0)
+            {
+                ApplyDragSelection(data, data.EditableMesh, selectionMode, targetTransform, dragRect, currentEvent.shift);
+                isDragSelecting = false;
+                GUIUtility.hotControl = 0;
+                currentEvent.Use();
+                SceneView.RepaintAll();
+            }
+
+            if (isDragSelecting && currentEvent.type == EventType.Repaint)
+            {
+                DrawDragSelectionRect(dragRect);
+            }
+        }
+
+        private static Rect GetDragRect(Vector2 start, Vector2 end)
+        {
+            float xMin = Mathf.Min(start.x, end.x);
+            float yMin = Mathf.Min(start.y, end.y);
+            float xMax = Mathf.Max(start.x, end.x);
+            float yMax = Mathf.Max(start.y, end.y);
+            return Rect.MinMaxRect(xMin, yMin, xMax, yMax);
+        }
+
+        private static void DrawDragSelectionRect(Rect rect)
+        {
+            Handles.BeginGUI();
+            EditorGUI.DrawRect(rect, DragSelectionFillColor);
+            Handles.color = DragSelectionOutlineColor;
+            Handles.DrawAAPolyLine(2f, new Vector3(rect.xMin, rect.yMin), new Vector3(rect.xMax, rect.yMin),
+                new Vector3(rect.xMax, rect.yMax), new Vector3(rect.xMin, rect.yMax), new Vector3(rect.xMin, rect.yMin));
+            Handles.EndGUI();
+        }
+
+        private static void ApplyDragSelection(EditableMeshSessionData data, EditableMesh mesh, MeshSelectionMode selectionMode,
+            Transform targetTransform, Rect rect, bool toggle)
+        {
+            if (rect.width <= 0f || rect.height <= 0f)
+                return;
+
+            Undo.RecordObject(data, "Drag Select Mesh Elements");
+            if (!toggle)
+            {
+                ClearSelection(mesh);
+            }
+
+            switch (selectionMode)
+            {
+                case MeshSelectionMode.Vertex:
+                    for (int v = 0; v < mesh.Verts.Capacity; v++)
+                    {
+                        if (!mesh.Verts.IsAlive(v))
+                            continue;
+
+                        Vector3 world = targetTransform.TransformPoint(mesh.Verts[v].Position);
+                        Vector2 guiPoint = HandleUtility.WorldToGUIPoint(world);
+                        if (!rect.Contains(guiPoint))
+                            continue;
+
+                        ref var vert = ref mesh.Verts[v];
+                        vert.Flags = SetSelectedFlag(vert.Flags, toggle ? !IsSelected(vert.Flags) : true);
+                    }
+                    break;
+                case MeshSelectionMode.Edge:
+                    for (int e = 0; e < mesh.Edges.Capacity; e++)
+                    {
+                        if (!mesh.Edges.IsAlive(e))
+                            continue;
+
+                        ref var edge = ref mesh.Edges[e];
+                        Vector3 v0 = mesh.Verts[edge.V0.Value].Position;
+                        Vector3 v1 = mesh.Verts[edge.V1.Value].Position;
+                        Vector3 center = (v0 + v1) * 0.5f;
+                        Vector3 world = targetTransform.TransformPoint(center);
+                        Vector2 guiPoint = HandleUtility.WorldToGUIPoint(world);
+                        if (!rect.Contains(guiPoint))
+                            continue;
+
+                        edge.Flags = SetSelectedFlag(edge.Flags, toggle ? !IsSelected(edge.Flags) : true);
+                    }
+                    break;
+                case MeshSelectionMode.Face:
+                    for (int f = 0; f < mesh.Faces.Capacity; f++)
+                    {
+                        if (!mesh.Faces.IsAlive(f))
+                            continue;
+
+                        ref var face = ref mesh.Faces[f];
+                        if (face.AnyLoop < 0 || face.LoopCount < 3)
+                            continue;
+
+                        Vector3 center = Vector3.zero;
+                        int loopId = face.AnyLoop;
+                        for (int i = 0; i < face.LoopCount; i++)
+                        {
+                            var loop = mesh.Loops[loopId];
+                            center += mesh.Verts[loop.Vert.Value].Position;
+                            loopId = loop.Next;
+                            if (loopId < 0)
+                                break;
+                        }
+
+                        center /= face.LoopCount;
+                        Vector3 world = targetTransform.TransformPoint(center);
+                        Vector2 guiPoint = HandleUtility.WorldToGUIPoint(world);
+                        if (!rect.Contains(guiPoint))
+                            continue;
+
+                        face.Flags = SetSelectedFlag(face.Flags, toggle ? !IsSelected(face.Flags) : true);
+                    }
+                    break;
+            }
+
+            EditorUtility.SetDirty(data);
         }
 
         /// <summary>
