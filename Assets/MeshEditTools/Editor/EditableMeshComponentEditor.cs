@@ -3,9 +3,15 @@ using UnityEngine;
 
 namespace MeshEditTools.Editor
 {
+    /// <summary>
+    /// Custom inspector that exposes conversion buttons for editable meshes.
+    /// </summary>
     [CustomEditor(typeof(EditableMeshComponent))]
     public class EditableMeshComponentEditor : UnityEditor.Editor
     {
+        /// <summary>
+        /// Draws the inspector UI and conversion actions.
+        /// </summary>
         public override void OnInspectorGUI()
         {
             base.OnInspectorGUI();

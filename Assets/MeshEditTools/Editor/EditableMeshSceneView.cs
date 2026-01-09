@@ -3,6 +3,9 @@ using UnityEngine;
 
 namespace MeshEditTools.Editor
 {
+    /// <summary>
+    /// Scene view overlay for rendering and selecting editable mesh elements.
+    /// </summary>
     [InitializeOnLoad]
     public static class EditableMeshSceneView
     {
@@ -18,11 +21,17 @@ namespace MeshEditTools.Editor
         private static readonly Color FaceOutlineColor = new(0.2f, 0.6f, 0.9f, 0.4f);
         private static readonly Color FaceOutlineSelectedColor = new(1f, 0.6f, 0.1f, 0.8f);
 
+        /// <summary>
+        /// Registers the scene GUI callback when the editor loads.
+        /// </summary>
         static EditableMeshSceneView()
         {
             SceneView.duringSceneGui += OnSceneGui;
         }
 
+        /// <summary>
+        /// Handles scene GUI events for selected editable mesh components.
+        /// </summary>
         private static void OnSceneGui(SceneView sceneView)
         {
             var targets = Selection.GetFiltered<EditableMeshComponent>(SelectionMode.TopLevel);
@@ -35,6 +44,9 @@ namespace MeshEditTools.Editor
             }
         }
 
+        /// <summary>
+        /// Draws the mesh elements for a single component.
+        /// </summary>
         private static void DrawEditableMesh(EditableMeshComponent component)
         {
             if (component == null || component.Mesh == null)
@@ -50,6 +62,9 @@ namespace MeshEditTools.Editor
             Handles.matrix = Matrix4x4.identity;
         }
 
+        /// <summary>
+        /// Draws vertex handles and selection buttons.
+        /// </summary>
         private static void DrawVertices(EditableMeshComponent component, EditableMesh mesh)
         {
             for (int v = 0; v < mesh.Verts.Capacity; v++)
@@ -72,6 +87,9 @@ namespace MeshEditTools.Editor
             }
         }
 
+        /// <summary>
+        /// Draws edge lines and selection handles.
+        /// </summary>
         private static void DrawEdges(EditableMeshComponent component, EditableMesh mesh)
         {
             for (int e = 0; e < mesh.Edges.Capacity; e++)
@@ -98,6 +116,9 @@ namespace MeshEditTools.Editor
             }
         }
 
+        /// <summary>
+        /// Draws face polygons and selection handles.
+        /// </summary>
         private static void DrawFaces(EditableMeshComponent component, EditableMesh mesh)
         {
             for (int f = 0; f < mesh.Faces.Capacity; f++)
@@ -145,6 +166,9 @@ namespace MeshEditTools.Editor
             }
         }
 
+        /// <summary>
+        /// Applies selection changes for a mesh element.
+        /// </summary>
         private static void ApplySelection(EditableMeshComponent component, EditableMesh mesh, MeshSelectionMode mode, int id)
         {
             bool toggle = Event.current.shift || Event.current.actionKey;
@@ -175,6 +199,9 @@ namespace MeshEditTools.Editor
             SceneView.RepaintAll();
         }
 
+        /// <summary>
+        /// Clears selection flags on all mesh elements.
+        /// </summary>
         private static void ClearSelection(EditableMesh mesh)
         {
             for (int v = 0; v < mesh.Verts.Capacity; v++)
@@ -205,8 +232,14 @@ namespace MeshEditTools.Editor
             }
         }
 
+        /// <summary>
+        /// Returns true if the selected flag is set.
+        /// </summary>
         private static bool IsSelected(byte flags) => (flags & (byte)MeshElementFlags.Selected) != 0;
 
+        /// <summary>
+        /// Sets or clears the selected flag on a flag field.
+        /// </summary>
         private static byte SetSelectedFlag(byte flags, bool selected)
         {
             if (selected)
