@@ -112,9 +112,6 @@ public class EditableMesh
             ref var vv = ref Verts[vThis.Value];
             if (vv.AnyLoop < 0) vv.AnyLoop = lId;
 
-            ref var ee = ref Edges[e.Value];
-            if (ee.AnyLoop < 0) ee.AnyLoop = lId;
-
             if (firstLoop < 0) firstLoop = lId;
         }
 
@@ -235,7 +232,7 @@ public class EditableMesh
 
         ref var e = ref Edges[eId];
 
-        if (e.AnyLoop < 0)
+        if (e.AnyLoop < 0 || Loops[e.AnyLoop].RadialNext < 0)
         {
             // first loop on this edge: self-cycle
             e.AnyLoop = loopId;
