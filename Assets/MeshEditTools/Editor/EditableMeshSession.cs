@@ -13,6 +13,7 @@ namespace MeshEditTools.Editor
         private static readonly Dictionary<int, EditableMeshSessionData> MeshCache = new();
         private static MeshFilter activeMeshFilter;
         private static EditableMeshSessionData activeData;
+        private static bool suppressSelectionChange;
 
         static EditableMeshSession()
         {
@@ -84,6 +85,17 @@ namespace MeshEditTools.Editor
         {
             if (!EditModeEnabled)
                 return;
+
+            if (suppressSelectionChange)
+                return;
+
+            if (activeMeshFilter != null && Selection.activeGameObject != activeMeshFilter.gameObject)
+            {
+                suppressSelectionChange = true;
+                Selection.activeGameObject = activeMeshFilter.gameObject;
+                suppressSelectionChange = false;
+                return;
+            }
 
             SetActiveFromSelection();
         }
