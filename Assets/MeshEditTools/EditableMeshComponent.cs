@@ -42,7 +42,8 @@ namespace MeshEditTools
                 return;
             }
 
-            editableMesh = EditableMesh.FromUnityMesh(targetMeshFilter.sharedMesh);
+            editableMesh ??= new EditableMesh();
+            editableMesh.LoadFromUnityMesh(targetMeshFilter.sharedMesh);
         }
     }
 

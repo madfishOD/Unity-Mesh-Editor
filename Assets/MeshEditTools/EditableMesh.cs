@@ -15,6 +15,15 @@ public class EditableMesh
     // Key: (minVert,maxVert) -> edgeId
     [NonSerialized] private System.Collections.Generic.Dictionary<ulong, int> _edgeMap;
 
+    public void Clear()
+    {
+        Verts = new SlotList<BmVert>();
+        Edges = new SlotList<BmEdge>();
+        Faces = new SlotList<BmFace>();
+        Loops = new SlotList<BmLoop>();
+        _edgeMap = null;
+    }
+
     public void RebuildCaches()
     {
         _edgeMap = new System.Collections.Generic.Dictionary<ulong, int>(1024);
@@ -169,10 +178,20 @@ public class EditableMesh
             return null;
 
         var editable = new EditableMesh();
+        editable.LoadFromUnityMesh(source);
+        return editable;
+    }
+
+    public void LoadFromUnityMesh(Mesh source)
+    {
+        if (source == null)
+            throw new ArgumentNullException(nameof(source));
+
+        Clear();
         var vertices = source.vertices;
         for (int i = 0; i < vertices.Length; i++)
         {
-            editable.AddVert(vertices[i]);
+            AddVert(vertices[i]);
         }
 
         var uv0 = source.uv;
@@ -202,12 +221,11 @@ public class EditableMesh
                     };
                 }
 
-                editable.AddFace(faceVerts, faceUv, submesh);
+                AddFace(faceVerts, faceUv, submesh);
             }
         }
 
-        editable.RebuildCaches();
-        return editable;
+        RebuildCaches();
     }
 
     private void InsertLoopIntoEdgeRadial(int loopId)
