@@ -77,7 +77,10 @@ namespace MeshEditTools.Editor
                 Handles.color = selected ? VertexSelectedColor : VertexColor;
 
                 float size = HandleUtility.GetHandleSize(vert.Position) * VertexSizeScale;
-                Handles.DotHandleCap(0, vert.Position, Quaternion.identity, size, EventType.Repaint);
+                if (Event.current.type == EventType.Repaint)
+                {
+                    Handles.DotHandleCap(0, vert.Position, Quaternion.identity, size, EventType.Repaint);
+                }
 
                 if (component.SelectionMode == MeshSelectionMode.Vertex &&
                     Handles.Button(vert.Position, Quaternion.identity, size, size, Handles.DotHandleCap))
@@ -102,7 +105,10 @@ namespace MeshEditTools.Editor
                 var v1 = mesh.Verts[edge.V1.Value];
                 bool selected = IsSelected(edge.Flags);
                 Handles.color = selected ? EdgeSelectedColor : EdgeColor;
-                Handles.DrawLine(v0.Position, v1.Position);
+                if (Event.current.type == EventType.Repaint)
+                {
+                    Handles.DrawLine(v0.Position, v1.Position);
+                }
 
                 if (component.SelectionMode == MeshSelectionMode.Edge)
                 {
@@ -143,7 +149,7 @@ namespace MeshEditTools.Editor
 
                 bool selected = IsSelected(face.Flags);
                 Handles.color = selected ? FaceSelectedColor : FaceColor;
-                if (positions.Length >= 3)
+                if (positions.Length >= 3 && Event.current.type == EventType.Repaint)
                 {
                     Handles.DrawAAConvexPolygon(positions);
                     Handles.color = selected ? FaceOutlineSelectedColor : FaceOutlineColor;
