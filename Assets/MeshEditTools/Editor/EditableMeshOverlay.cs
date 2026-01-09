@@ -61,13 +61,25 @@ namespace MeshEditTools.Editor
                     }
 
                     EditorGUILayout.Space(2f);
-                    var toolLabels = new[] { "Select Tool", "Move Tool" };
-                    int toolIndex = Tools.current == Tool.Move ? 1 : 0;
+                    var toolLabels = new[] { "Select Tool", "Move Tool", "Rotate Tool", "Scale Tool" };
+                    int toolIndex = Tools.current switch
+                    {
+                        Tool.Move => 1,
+                        Tool.Rotate => 2,
+                        Tool.Scale => 3,
+                        _ => 0
+                    };
                     EditorGUI.BeginChangeCheck();
                     toolIndex = GUILayout.Toolbar(toolIndex, toolLabels);
                     if (EditorGUI.EndChangeCheck())
                     {
-                        Tools.current = toolIndex == 1 ? Tool.Move : Tool.None;
+                        Tools.current = toolIndex switch
+                        {
+                            1 => Tool.Move,
+                            2 => Tool.Rotate,
+                            3 => Tool.Scale,
+                            _ => Tool.None
+                        };
                     }
                 }
 
