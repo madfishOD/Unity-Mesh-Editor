@@ -102,6 +102,7 @@ public class EditableMesh
 
         // Create loops with vert/edge
         int[] loopIds = new int[n];
+        int loopStartId = Loops.AllocateRange(n);
 
         for (int i = 0; i < n; i++)
         {
@@ -110,7 +111,7 @@ public class EditableMesh
 
             EdgeId e = GetOrCreateEdge(vThis, vNext);
 
-            int lId = Loops.Allocate();
+            int lId = loopStartId + i;
             loopIds[i] = lId;
 
             Loops[lId] = new BmLoop
@@ -225,34 +226,43 @@ public class EditableMesh
         bool hasUv0 = uv0 != null && uv0.Length == vertices.Length;
 
         int submeshCount = source.subMeshCount;
+        int[][] trianglesBySubmesh = new int[submeshCount][];
+        int triangleIndexCount = 0;
         for (int submesh = 0; submesh < submeshCount; submesh++)
         {
             var triangles = source.GetTriangles(submesh);
+            trianglesBySubmesh[submesh] = triangles;
+            triangleIndexCount += triangles.Length;
+        }
+
+        if (triangleIndexCount > 0)
+            _edgeMap = new System.Collections.Generic.Dictionary<ulong, int>(Mathf.Max(4, triangleIndexCount));
+
+        var faceVerts = new VertId[3];
+        Vector2[] faceUv = hasUv0 ? new Vector2[3] : null;
+
+        for (int submesh = 0; submesh < submeshCount; submesh++)
+        {
+            var triangles = trianglesBySubmesh[submesh];
             for (int i = 0; i + 2 < triangles.Length; i += 3)
             {
-                var faceVerts = new[]
-                {
-                    new VertId(triangles[i]),
-                    new VertId(triangles[i + 1]),
-                    new VertId(triangles[i + 2])
-                };
+                faceVerts[0] = new VertId(triangles[i]);
+                faceVerts[1] = new VertId(triangles[i + 1]);
+                faceVerts[2] = new VertId(triangles[i + 2]);
 
-                Vector2[] faceUv = null;
                 if (hasUv0)
                 {
-                    faceUv = new[]
-                    {
-                        uv0[triangles[i]],
-                        uv0[triangles[i + 1]],
-                        uv0[triangles[i + 2]]
-                    };
+                    faceUv[0] = uv0[triangles[i]];
+                    faceUv[1] = uv0[triangles[i + 1]];
+                    faceUv[2] = uv0[triangles[i + 2]];
                 }
 
                 AddFace(faceVerts, faceUv, submesh);
             }
         }
 
-        RebuildCaches();
+        if (_edgeMap == null && Edges.Capacity > 0)
+            RebuildCaches();
     }
 
     /// <summary>

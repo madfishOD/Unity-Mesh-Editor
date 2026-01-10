@@ -263,6 +263,24 @@ namespace MeshEditTools
         }
 
         /// <summary>
+        /// Allocates a contiguous range of slots at the end of the list.
+        /// </summary>
+        public int AllocateRange(int count)
+        {
+            if (count <= 0)
+                throw new ArgumentOutOfRangeException(nameof(count));
+
+            int startId = Items.Length;
+            int newSize = startId + count;
+            Array.Resize(ref Items, newSize);
+            Array.Resize(ref Alive, newSize);
+            for (int i = startId; i < newSize; i++)
+                Alive[i] = true;
+
+            return startId;
+        }
+
+        /// <summary>
         /// Frees a slot id for reuse.
         /// </summary>
         public void FreeItem(int id)
