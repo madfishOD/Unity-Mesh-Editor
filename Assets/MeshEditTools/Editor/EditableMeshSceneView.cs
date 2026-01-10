@@ -80,7 +80,7 @@ namespace MeshEditTools.Editor
             Handles.matrix = targetTransform.localToWorldMatrix;
             DrawFaces(data, mesh, selectionMode);
             DrawEdges(data, mesh, selectionMode);
-            DrawVertices(data, mesh, selectionMode);
+            DrawVertices(data, mesh, targetTransform, selectionMode);
             DrawTransformHandle(data, mesh, selectionMode);
             Handles.matrix = Matrix4x4.identity;
         }
@@ -267,7 +267,7 @@ namespace MeshEditTools.Editor
         /// <summary>
         /// Draws vertex handles and selection buttons.
         /// </summary>
-        private static void DrawVertices(EditableMeshSessionData data, EditableMesh mesh, MeshSelectionMode selectionMode)
+        private static void DrawVertices(EditableMeshSessionData data, EditableMesh mesh, Transform targetTransform, MeshSelectionMode selectionMode)
         {
             if (Event.current.type != EventType.Repaint)
                 return;
@@ -285,6 +285,8 @@ namespace MeshEditTools.Editor
             Matrix4x4 localToWorld = Handles.matrix;
             Vector3 cameraRight = camera.transform.right;
             Vector3 cameraUp = camera.transform.up;
+            Vector3 handleOrigin = targetTransform.position;
+            float size = HandleUtility.GetHandleSize(handleOrigin) * VertexSizeScale;
 
             GL.PushMatrix();
             GL.MultMatrix(Matrix4x4.identity);
@@ -299,11 +301,6 @@ namespace MeshEditTools.Editor
                 GL.Color(selected ? VertexSelectedColor : VertexColor);
 
                 Vector3 worldPosition = localToWorld.MultiplyPoint3x4(vert.Position);
-                Vector3 lossyScale = localToWorld.lossyScale;
-                float scaleFactor = Mathf.Max(Mathf.Abs(lossyScale.x), Mathf.Abs(lossyScale.y), Mathf.Abs(lossyScale.z));
-                if (scaleFactor <= 0f)
-                    scaleFactor = 1f;
-                float size = HandleUtility.GetHandleSize(worldPosition) * VertexSizeScale / scaleFactor;
                 Vector3 right = cameraRight * size;
                 Vector3 up = cameraUp * size;
 
