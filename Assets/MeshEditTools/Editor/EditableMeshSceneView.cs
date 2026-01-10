@@ -757,10 +757,22 @@ namespace MeshEditTools.Editor
         {
             int bestId = -1;
             float bestSqrDistance = float.MaxValue;
+            float vertexPickRadius = VertexPickGuiRadius;
+            var sceneView = SceneView.currentDrawingSceneView;
+            var camera = sceneView != null ? sceneView.camera : null;
 
             switch (selectionMode)
             {
                 case MeshSelectionMode.Vertex:
+                    if (camera != null && targetTransform != null)
+                    {
+                        Vector3 handleOrigin = targetTransform.position;
+                        float worldSize = HandleUtility.GetHandleSize(handleOrigin) * VertexSizeScale;
+                        Vector2 originGui = HandleUtility.WorldToGUIPoint(handleOrigin);
+                        Vector2 rightGui = HandleUtility.WorldToGUIPoint(handleOrigin + camera.transform.right * worldSize);
+                        vertexPickRadius = Mathf.Max(vertexPickRadius, (rightGui - originGui).magnitude);
+                    }
+
                     for (int v = 0; v < mesh.Verts.Capacity; v++)
                     {
                         if (!mesh.Verts.IsAlive(v))
@@ -769,7 +781,7 @@ namespace MeshEditTools.Editor
                         Vector3 world = targetTransform.TransformPoint(mesh.Verts[v].Position);
                         Vector2 guiPoint = HandleUtility.WorldToGUIPoint(world);
                         float sqrDistance = (guiPoint - mousePosition).sqrMagnitude;
-                        if (sqrDistance <= VertexPickGuiRadius * VertexPickGuiRadius && sqrDistance < bestSqrDistance)
+                        if (sqrDistance <= vertexPickRadius * vertexPickRadius && sqrDistance < bestSqrDistance)
                         {
                             bestSqrDistance = sqrDistance;
                             bestId = v;
