@@ -299,7 +299,11 @@ namespace MeshEditTools.Editor
                 GL.Color(selected ? VertexSelectedColor : VertexColor);
 
                 Vector3 worldPosition = localToWorld.MultiplyPoint3x4(vert.Position);
-                float size = HandleUtility.GetHandleSize(worldPosition) * VertexSizeScale;
+                Vector3 lossyScale = localToWorld.lossyScale;
+                float scaleFactor = Mathf.Max(Mathf.Abs(lossyScale.x), Mathf.Abs(lossyScale.y), Mathf.Abs(lossyScale.z));
+                if (scaleFactor <= 0f)
+                    scaleFactor = 1f;
+                float size = HandleUtility.GetHandleSize(worldPosition) * VertexSizeScale / scaleFactor;
                 Vector3 right = cameraRight * size;
                 Vector3 up = cameraUp * size;
 
