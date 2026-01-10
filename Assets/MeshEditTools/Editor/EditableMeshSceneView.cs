@@ -39,6 +39,7 @@ namespace MeshEditTools.Editor
         private static bool selectionCacheDirty = true;
         private static Vector3[] facePositionsBuffer = System.Array.Empty<Vector3>();
         private static MeshSelectionMode cachedSelectionMode = MeshSelectionMode.Vertex;
+        private static Material vertexBillboardMaterial;
 
         /// <summary>
         /// Registers the scene GUI callback when the editor loads.
@@ -79,7 +80,7 @@ namespace MeshEditTools.Editor
             Handles.matrix = targetTransform.localToWorldMatrix;
             DrawFaces(data, mesh, selectionMode);
             DrawEdges(data, mesh, selectionMode);
-            DrawVertices(data, mesh, selectionMode);
+            DrawVertices(data, mesh, targetTransform, selectionMode);
             DrawTransformHandle(data, mesh, selectionMode);
             Handles.matrix = Matrix4x4.identity;
         }
@@ -266,8 +267,30 @@ namespace MeshEditTools.Editor
         /// <summary>
         /// Draws vertex handles and selection buttons.
         /// </summary>
-        private static void DrawVertices(EditableMeshSessionData data, EditableMesh mesh, MeshSelectionMode selectionMode)
+        private static void DrawVertices(EditableMeshSessionData data, EditableMesh mesh, Transform targetTransform, MeshSelectionMode selectionMode)
         {
+            if (Event.current.type != EventType.Repaint)
+                return;
+
+            var sceneView = SceneView.currentDrawingSceneView;
+            var camera = sceneView != null ? sceneView.camera : null;
+            if (camera == null)
+                return;
+
+            EnsureVertexBillboardMaterial();
+            if (vertexBillboardMaterial == null)
+                return;
+            vertexBillboardMaterial.SetPass(0);
+
+            Matrix4x4 localToWorld = Handles.matrix;
+            Vector3 cameraRight = camera.transform.right;
+            Vector3 cameraUp = camera.transform.up;
+            Vector3 handleOrigin = targetTransform.position;
+            float size = HandleUtility.GetHandleSize(handleOrigin) * VertexSizeScale;
+
+            GL.PushMatrix();
+            GL.MultMatrix(Matrix4x4.identity);
+            GL.Begin(GL.QUADS);
             for (int v = 0; v < mesh.Verts.Capacity; v++)
             {
                 if (!mesh.Verts.IsAlive(v))
@@ -275,14 +298,37 @@ namespace MeshEditTools.Editor
 
                 ref var vert = ref mesh.Verts[v];
                 bool selected = IsSelected(vert.Flags);
-                Handles.color = selected ? VertexSelectedColor : VertexColor;
+                GL.Color(selected ? VertexSelectedColor : VertexColor);
 
-                float size = HandleUtility.GetHandleSize(vert.Position) * VertexSizeScale;
-                if (Event.current.type == EventType.Repaint)
-                {
-                    Handles.DotHandleCap(0, vert.Position, Quaternion.identity, size, EventType.Repaint);
-                }
+                Vector3 worldPosition = localToWorld.MultiplyPoint3x4(vert.Position);
+                Vector3 right = cameraRight * size;
+                Vector3 up = cameraUp * size;
+
+                GL.Vertex(worldPosition - right - up);
+                GL.Vertex(worldPosition - right + up);
+                GL.Vertex(worldPosition + right + up);
+                GL.Vertex(worldPosition + right - up);
             }
+            GL.End();
+            GL.PopMatrix();
+        }
+
+        private static void EnsureVertexBillboardMaterial()
+        {
+            if (vertexBillboardMaterial != null)
+                return;
+
+            Shader shader = Shader.Find("Hidden/Internal-Colored");
+            if (shader == null)
+                return;
+            vertexBillboardMaterial = new Material(shader)
+            {
+                hideFlags = HideFlags.HideAndDontSave
+            };
+            vertexBillboardMaterial.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            vertexBillboardMaterial.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+            vertexBillboardMaterial.SetInt("_Cull", (int)UnityEngine.Rendering.CullMode.Off);
+            vertexBillboardMaterial.SetInt("_ZWrite", 0);
         }
 
         /// <summary>
@@ -711,10 +757,22 @@ namespace MeshEditTools.Editor
         {
             int bestId = -1;
             float bestSqrDistance = float.MaxValue;
+            float vertexPickRadius = VertexPickGuiRadius;
+            var sceneView = SceneView.currentDrawingSceneView;
+            var camera = sceneView != null ? sceneView.camera : null;
 
             switch (selectionMode)
             {
                 case MeshSelectionMode.Vertex:
+                    if (camera != null && targetTransform != null)
+                    {
+                        Vector3 handleOrigin = targetTransform.position;
+                        float worldSize = HandleUtility.GetHandleSize(handleOrigin) * VertexSizeScale;
+                        Vector2 originGui = HandleUtility.WorldToGUIPoint(handleOrigin);
+                        Vector2 rightGui = HandleUtility.WorldToGUIPoint(handleOrigin + camera.transform.right * worldSize);
+                        vertexPickRadius = Mathf.Max(vertexPickRadius, (rightGui - originGui).magnitude);
+                    }
+
                     for (int v = 0; v < mesh.Verts.Capacity; v++)
                     {
                         if (!mesh.Verts.IsAlive(v))
@@ -723,7 +781,7 @@ namespace MeshEditTools.Editor
                         Vector3 world = targetTransform.TransformPoint(mesh.Verts[v].Position);
                         Vector2 guiPoint = HandleUtility.WorldToGUIPoint(world);
                         float sqrDistance = (guiPoint - mousePosition).sqrMagnitude;
-                        if (sqrDistance <= VertexPickGuiRadius * VertexPickGuiRadius && sqrDistance < bestSqrDistance)
+                        if (sqrDistance <= vertexPickRadius * vertexPickRadius && sqrDistance < bestSqrDistance)
                         {
                             bestSqrDistance = sqrDistance;
                             bestId = v;
