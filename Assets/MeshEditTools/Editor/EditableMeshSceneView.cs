@@ -299,10 +299,13 @@ namespace MeshEditTools.Editor
                 bool selected = IsSelected(vert.Flags);
                 GL.Color(selected ? VertexSelectedColor : VertexColor);
 
-                Vector3 worldPosition = localToWorld.MultiplyPoint3x4(vert.Position);
-                float size = HandleUtility.GetHandleSize(worldPosition) * VertexSizeScale;
-                Vector3 right = worldToLocal.MultiplyVector(cameraRight * size);
-                Vector3 up = worldToLocal.MultiplyVector(cameraUp * size);
+                float size = HandleUtility.GetHandleSize(vert.Position) * VertexSizeScale;
+                Vector3 right = worldToLocal.MultiplyVector(cameraRight);
+                Vector3 up = worldToLocal.MultiplyVector(cameraUp);
+                right.Normalize();
+                up = (up - Vector3.Dot(up, right) * right).normalized;
+                right *= size;
+                up *= size;
 
                 GL.Vertex(vert.Position - right - up);
                 GL.Vertex(vert.Position - right + up);
