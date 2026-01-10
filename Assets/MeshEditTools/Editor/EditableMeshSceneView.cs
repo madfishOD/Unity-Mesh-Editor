@@ -283,10 +283,12 @@ namespace MeshEditTools.Editor
             vertexBillboardMaterial.SetPass(0);
 
             Matrix4x4 localToWorld = Handles.matrix;
+            Matrix4x4 worldToLocal = localToWorld.inverse;
             Vector3 cameraRight = camera.transform.right;
             Vector3 cameraUp = camera.transform.up;
 
             GL.PushMatrix();
+            GL.MultMatrix(localToWorld);
             GL.Begin(GL.QUADS);
             for (int v = 0; v < mesh.Verts.Capacity; v++)
             {
@@ -299,13 +301,13 @@ namespace MeshEditTools.Editor
 
                 Vector3 worldPosition = localToWorld.MultiplyPoint3x4(vert.Position);
                 float size = HandleUtility.GetHandleSize(worldPosition) * VertexSizeScale;
-                Vector3 right = cameraRight * size;
-                Vector3 up = cameraUp * size;
+                Vector3 right = worldToLocal.MultiplyVector(cameraRight * size);
+                Vector3 up = worldToLocal.MultiplyVector(cameraUp * size);
 
-                GL.Vertex(worldPosition - right - up);
-                GL.Vertex(worldPosition - right + up);
-                GL.Vertex(worldPosition + right + up);
-                GL.Vertex(worldPosition + right - up);
+                GL.Vertex(vert.Position - right - up);
+                GL.Vertex(vert.Position - right + up);
+                GL.Vertex(vert.Position + right + up);
+                GL.Vertex(vert.Position + right - up);
             }
             GL.End();
             GL.PopMatrix();
